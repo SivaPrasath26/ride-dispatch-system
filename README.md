@@ -4,7 +4,7 @@ Real-time ride matching system. A rider requests a trip, the nearest available d
 
 Built as my M.Sc. Data Science major project.
 
-![Architecture](docs/images/diagram.png)
+![Architecture](docs/images/image.png)
 
 ## Stack
 
