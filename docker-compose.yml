@@ -97,7 +97,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-rideuser}:${POSTGRES_PASSWORD:-ridepass}@postgres:5432/${POSTGRES_DB:-ridedb}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret}
+      JWT_SECRET: ${JWT_SECRET}
       FLASK_ENV: ${FLASK_ENV:-development}
     depends_on:
       kafka:
@@ -140,7 +140,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:

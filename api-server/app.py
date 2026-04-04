@@ -28,7 +28,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
 
     # ── Config ────────────────────────────────────────────────────────────────
-    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET", "change-this-secret")
+    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET")
     app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False  # long-lived for dev
 
     # ── Extensions ────────────────────────────────────────────────────────────

@@ -41,7 +41,7 @@ class RedisStore:
         pool = redis.ConnectionPool(
             host=os.getenv("REDIS_HOST", "localhost"),
             port=int(os.getenv("REDIS_PORT", 6379)),
-            max_connections=20,
+            max_connections=int(os.getenv("REDIS_MAX_CONNECTIONS", 20)),
             decode_responses=True,
             socket_connect_timeout=2,
             socket_timeout=1,
@@ -82,7 +82,7 @@ class RedisStore:
         pipe.execute()
 
     def get_nearby_drivers(self, region_id: str, lat: float, lng: float,
-                           radius_km: float, count: int = 20) -> list:
+                           radius_km: float, count: int = int(os.getenv("MAX_MATCHING_CANDIDATES", 20))) -> list:
         """
         Return up to `count` driver IDs within `radius_km` of the pickup point,
         sorted by distance ascending.
