@@ -21,7 +21,7 @@ class PostgresStore:
         self.pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=2,
             maxconn=10,
-            dsn=os.getenv("POSTGRES_DSN", "postgresql://rideuser:ridepass@localhost:5432/ridedb")
+            dsn=os.getenv("POSTGRES_DSN")
         )
         self._lock = threading.Lock()
 

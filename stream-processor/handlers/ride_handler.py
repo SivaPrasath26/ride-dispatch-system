@@ -13,6 +13,7 @@ Flow for each event:
 8. Commit Kafka offset
 """
 
+import os
 import time
 import threading
 import logging
@@ -24,8 +25,8 @@ from utils import metrics as m
 log = logging.getLogger(__name__)
 
 # Retry radius steps in km. System tries each step before giving up.
-RADIUS_STEPS = [5, 7, 10, 15]
-
+RADIUS_STEPS = [int(os.getenv("MATCHING_RADIUS_KM", 5)), 7, 10, 15]
+MATCH_TIMEOUT = int(os.getenv("MATCH_TIMEOUT_SECONDS", 30))
 
 class RideHandler:
     def __init__(self, redis_store, postgres_store, dedup: DeduplicationCache):
