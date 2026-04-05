@@ -1,63 +1,71 @@
 """
-app.py - Flask API Server entry point.
+app.py - FastAPI application entry point.
 
-Exposes REST endpoints for riders, drivers, and admin.
-All matching reads come from Redis (sub-5ms).
-PostgreSQL is only queried for historical data (ride history, profiles).
+Mounts three routers:
+  /api/v1/ride*     - rider endpoints
+  /api/v1/driver*   - driver endpoints
+  /api/v1/admin*    - admin + auth endpoints
+
+All matching reads are served from Redis (sub-5ms).
+PostgreSQL is only hit for historical data - never in the critical path.
 """
 
 import os
-import logging
-from flask import Flask
-from flask_jwt_extended import JWTManager
-from flask_cors import CORS
+from contextlib import asynccontextmanager
 
-from routes.ride_routes import ride_bp
-from routes.driver_routes import driver_bp
-from routes.admin_routes import admin_bp
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from routes.ride_routes import router as ride_router
+from routes.driver_routes import router as driver_router
+from routes.admin_routes import router as admin_router
 from services.redis_service import get_redis
-from services.kafka_producer import get_producer
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup - verify Redis is reachable
+    try:
+        get_redis().ping()
+        print("[Startup] Redis connected")
+    except Exception as e:
+        print(f"[Startup] Redis connection failed: {e}")
+    yield
+    # Shutdown - nothing to clean up
+
+
+app = FastAPI(
+    title="Ride Dispatch System",
+    description="Real-time ride matching API",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
+# CORS - allow frontend dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def create_app() -> Flask:
-    app = Flask(__name__)
-
-    # ── Config ────────────────────────────────────────────────────────────────
-    app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET")
-    app.config["JWT_ACCESS_TOKEN_EXPIRES"] = False  # long-lived for dev
-
-    # ── Extensions ────────────────────────────────────────────────────────────
-    JWTManager(app)
-    CORS(app)
-
-    # ── Blueprints ────────────────────────────────────────────────────────────
-    app.register_blueprint(ride_bp,   url_prefix="/api/v1")
-    app.register_blueprint(driver_bp, url_prefix="/api/v1")
-    app.register_blueprint(admin_bp,  url_prefix="/api/v1")
-
-    # ── Health check (no auth) ────────────────────────────────────────────────
-    @app.get("/api/v1/health")
-    def health():
-        redis_ok = False
-        try:
-            get_redis().ping()
-            redis_ok = True
-        except Exception:
-            pass
-
-        return {
-            "status": "healthy" if redis_ok else "degraded",
-            "redis": "connected" if redis_ok else "error",
-        }, 200
-
-    return app
+# Routers
+app.include_router(ride_router,   prefix="/api/v1")
+app.include_router(driver_router, prefix="/api/v1")
+app.include_router(admin_router,  prefix="/api/v1")
 
 
-if __name__ == "__main__":
-    app = create_app()
-    app.run(host="0.0.0.0", port=5000, debug=os.getenv("FLASK_ENV") == "development")
+@app.get("/api/v1/health", tags=["system"])
+def health():
+    """Health check - no auth required."""
+    redis_ok = False
+    try:
+        get_redis().ping()
+        redis_ok = True
+    except Exception:
+        pass
+
+    return {
+        "status": "healthy" if redis_ok else "degraded",
+        "redis": "connected" if redis_ok else "error",
+    }
