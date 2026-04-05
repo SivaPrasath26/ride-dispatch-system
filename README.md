@@ -4,13 +4,13 @@ Real-time ride matching system. A rider requests a trip, the nearest available d
 
 Built as my M.Sc. Data Science major project.
 
-![Architecture](docs/images/image.png)
+![Architecture](docs/images/architecture.png)
 
 ## Stack
 
 - **Kafka** - event streaming for ride requests and driver location updates
 - **Redis** - geospatial driver index, ride state, assignment results
-- **Python + Flask** - stream processor and REST API
+- **Python + FastAPI** - stream processor and REST API
 - **PostgreSQL** - ride history and driver profiles
 - **React + Leaflet.js** - live map frontend
 - **Prometheus + Grafana** - metrics and dashboards
@@ -26,7 +26,7 @@ Driver positions stream in from Kafka every 5 seconds and update the Redis geo i
 
 ```
 stream-processor/    matching engine, Kafka consumers, Redis + PostgreSQL writes
-api-server/          Flask REST API, Kafka producer
+api-server/          FastAPI REST API, Kafka producer
 event-generator/     synthetic rider and driver simulation
 frontend/            React + Leaflet.js live map and admin dashboard
 migrations/          PostgreSQL schema
@@ -50,4 +50,9 @@ docker compose up -d
 ./scripts/create_topics.sh
 ```
 
-API runs at `http://localhost:5000`, frontend at `http://localhost:3000`, Grafana at `http://localhost:3001`.
+After all containers are healthy:
+
+- API (FastAPI /docs) → `http://localhost:5000/docs`
+- Frontend → `http://localhost:3000`
+- Grafana → `http://localhost:3001`
+- Prometheus → `http://localhost:9090`

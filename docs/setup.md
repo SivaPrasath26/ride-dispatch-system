@@ -117,7 +117,7 @@ You should see log lines like:
 | Service | URL | Credentials |
 |---|---|---|
 | Frontend | http://localhost:3000 | - |
-| API Swagger | http://localhost:8000/docs | JWT token |
+| API Swagger | http://localhost:5000/docs | JWT token |
 | Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | - |
 | Redis Insight | http://localhost:8001 | - |
@@ -128,7 +128,7 @@ You should see log lines like:
 
 ```bash
 # 1. Create a ride request
-curl -X POST http://localhost:8000/api/v1/ride \
+curl -X POST http://localhost:5000/api/v1/ride \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your_token>" \
   -d '{"pickup_lat":12.9716,"pickup_lng":77.5946,"dropoff_lat":13.0827,"dropoff_lng":77.6065}'
@@ -136,7 +136,7 @@ curl -X POST http://localhost:8000/api/v1/ride \
 # Response: {"ride_id": "abc-123", "status": "SEARCHING"}
 
 # 2. Poll for match (after 1-2 seconds)
-curl http://localhost:8000/api/v1/match/abc-123 \
+curl http://localhost:5000/api/v1/match/abc-123 \
   -H "Authorization: Bearer <your_token>"
 
 # Response: {"status": "MATCHED", "driver": {...}}
@@ -226,7 +226,7 @@ docker compose up -d
 docker compose exec api-server alembic upgrade head
 ```
 
-Make sure ports 80, 3000, 8000 are open in your EC2 security group.
+Make sure ports 80, 3000, 5000 are open in your EC2 security group.
 
 ---
 
