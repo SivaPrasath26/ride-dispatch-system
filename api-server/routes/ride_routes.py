@@ -1,128 +1,124 @@
 """
 routes/ride_routes.py
-Rider-facing endpoints for creating rides and polling assignment status.
+Rider-facing endpoints.
 
-POST /api/v1/ride         - create ride request (async, returns immediately)
-GET  /api/v1/match/{id}  - poll for assignment result (reads Redis, sub-5ms)
-POST /api/v1/ride/{id}/cancel
+POST /ride              - create ride request (async, returns immediately)
+GET  /match/{ride_id}  - poll assignment result (Redis only, sub-5ms)
+POST /ride/{id}/cancel - cancel a searching or matched ride
 """
 
 import uuid
 import logging
+from typing import Annotated
 
-from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 
 from services.redis_service import get_redis
 from services.kafka_producer import publish_ride_request
+from services.auth_service import verify_token
 from utils.geo import get_region
 
-ride_bp = Blueprint("ride", __name__)
+router = APIRouter(tags=["ride"])
 log = logging.getLogger(__name__)
 
 
-@ride_bp.post("/ride")
-@jwt_required()
-def create_ride():
+# ─── Request / Response models ────────────────────────────────────────────────
+
+class RideRequest(BaseModel):
+    rider_id: str
+    pickup_lat: float
+    pickup_lng: float
+    dropoff_lat: float
+    dropoff_lng: float
+
+
+# ─── Endpoints ────────────────────────────────────────────────────────────────
+
+@router.post("/ride", status_code=202)
+def create_ride(
+    body: RideRequest,
+    current_user: Annotated[dict, Depends(verify_token)],
+):
     """
     Create a new ride request.
-    Publishes to Kafka and returns ride_id immediately.
-    The stream processor picks it up and writes the match result to Redis.
+    Publishes to Kafka and returns ride_id immediately - matching is async.
+    The stream processor assigns a driver and writes the result to Redis.
+    The rider polls GET /match/{ride_id} for the result.
     """
-    body = request.get_json()
-    if not body:
-        return jsonify({"error": "MISSING_BODY", "message": "Request body required"}), 400
-
-    required = ["pickup_lat", "pickup_lng", "dropoff_lat", "dropoff_lng"]
-    for field in required:
-        if field not in body:
-            return jsonify({"error": "MISSING_FIELD", "message": f"{field} required"}), 422
-
-    pickup_lat = float(body["pickup_lat"])
-    pickup_lng = float(body["pickup_lng"])
-    region_id = get_region(pickup_lat, pickup_lng)
+    region_id = get_region(body.pickup_lat, body.pickup_lng)
     ride_id = str(uuid.uuid4())
-
-    # rider_id would normally come from JWT identity
-    rider_id = body.get("rider_id", "anonymous")
 
     try:
         publish_ride_request(
             ride_id=ride_id,
-            rider_id=rider_id,
+            rider_id=body.rider_id,
             region_id=region_id,
-            pickup_lat=pickup_lat,
-            pickup_lng=pickup_lng,
-            dropoff_lat=float(body["dropoff_lat"]),
-            dropoff_lng=float(body["dropoff_lng"]),
+            pickup_lat=body.pickup_lat,
+            pickup_lng=body.pickup_lng,
+            dropoff_lat=body.dropoff_lat,
+            dropoff_lng=body.dropoff_lng,
         )
     except Exception as e:
-        log.error(f"[RideRoutes] Failed to publish ride request: {e}")
-        return jsonify({"error": "KAFKA_ERROR", "message": "Could not queue ride request"}), 503
+        log.error(f"[RideRoutes] Kafka publish failed: {e}")
+        raise HTTPException(status_code=503, detail="Could not queue ride request")
 
     log.info(f"[RideRoutes] Created ride={ride_id} region={region_id}")
-
-    return jsonify({
-        "ride_id": ride_id,
-        "status": "SEARCHING",
-        "region_id": region_id,
-    }), 202
+    return {"ride_id": ride_id, "status": "SEARCHING", "region_id": region_id}
 
 
-@ride_bp.get("/match/<ride_id>")
-@jwt_required()
-def get_match(ride_id: str):
+@router.get("/match/{ride_id}")
+def get_match(
+    ride_id: str,
+    current_user: Annotated[dict, Depends(verify_token)],
+):
     """
-    Poll for ride assignment result.
-    All data served from Redis - no database query in this path.
+    Poll for assignment result.
+    Served entirely from Redis - no database query in this path.
     """
     redis = get_redis()
 
     assignment = redis.hgetall(f"assignment:{ride_id}")
     if assignment:
-        return jsonify({
+        return {
             "ride_id": ride_id,
             "status": "MATCHED",
             "driver": {
-                "driver_id": assignment.get("driver_id"),
-                "name": assignment.get("driver_name"),
+                "driver_id":   assignment.get("driver_id"),
+                "name":        assignment.get("driver_name"),
                 "vehicle_type": assignment.get("vehicle_type"),
-                "vehicle_no": assignment.get("vehicle_no"),
-                "rating": float(assignment.get("rating", 5.0)),
+                "vehicle_no":  assignment.get("vehicle_no"),
+                "rating":      float(assignment.get("rating", 5.0)),
                 "distance_km": float(assignment.get("distance_km", 0)),
                 "eta_seconds": int(assignment.get("eta_seconds", 0)),
-            }
-        }), 200
+            },
+        }
 
     ride_status = redis.hget(f"ride:{ride_id}", "status")
 
-    if ride_status == "TIMEOUT":
-        return jsonify({"ride_id": ride_id, "status": "TIMEOUT"}), 200
+    if ride_status in ("TIMEOUT", "CANCELLED"):
+        return {"ride_id": ride_id, "status": ride_status}
 
-    if ride_status == "CANCELLED":
-        return jsonify({"ride_id": ride_id, "status": "CANCELLED"}), 200
-
-    if ride_status == "SEARCHING" or ride_status is None:
-        return jsonify({"ride_id": ride_id, "status": "SEARCHING"}), 200
-
-    return jsonify({"ride_id": ride_id, "status": ride_status}), 200
+    return {"ride_id": ride_id, "status": ride_status or "SEARCHING"}
 
 
-@ride_bp.post("/ride/<ride_id>/cancel")
-@jwt_required()
-def cancel_ride(ride_id: str):
-    """Cancel a ride that is still in SEARCHING state."""
+@router.post("/ride/{ride_id}/cancel")
+def cancel_ride(
+    ride_id: str,
+    current_user: Annotated[dict, Depends(verify_token)],
+):
+    """Cancel a ride that is still SEARCHING or MATCHED."""
     redis = get_redis()
     current_status = redis.hget(f"ride:{ride_id}", "status")
 
     if not current_status:
-        return jsonify({"error": "RIDE_NOT_FOUND", "message": f"No ride found with id {ride_id}"}), 404
+        raise HTTPException(status_code=404, detail=f"Ride {ride_id} not found")
 
     if current_status not in ("SEARCHING", "MATCHED"):
-        return jsonify({
-            "error": "CANNOT_CANCEL",
-            "message": f"Cannot cancel a ride with status {current_status}"
-        }), 409
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot cancel ride with status {current_status}",
+        )
 
     redis.hset(f"ride:{ride_id}", "status", "CANCELLED")
-    return jsonify({"ride_id": ride_id, "status": "CANCELLED"}), 200
+    return {"ride_id": ride_id, "status": "CANCELLED"}
