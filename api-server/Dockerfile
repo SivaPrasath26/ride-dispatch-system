@@ -9,4 +9,5 @@ COPY . .
 
 RUN touch routes/__init__.py services/__init__.py utils/__init__.py
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout", "60", "app:create_app()"]
+# Run the FastAPI app with uvicorn (matches docker-compose port 5000)
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "4"]

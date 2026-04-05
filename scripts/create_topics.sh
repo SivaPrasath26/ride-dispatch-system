@@ -1,32 +1,32 @@
-#!/bin/bash
-# scripts/create_topics.sh
+#!/usr/bin/env bash
 # Run once after Kafka container is healthy to create all required topics.
 
-set -e
+set -euo pipefail
 
-KAFKA_CONTAINER="kafka"
-BOOTSTRAP="localhost:9092"
+KAFKA_CONTAINER=${KAFKA_CONTAINER:-kafka}
+BOOTSTRAP=${BOOTSTRAP:-kafka:9092}
+KAFKA_TOPICS_BIN=/usr/bin/kafka-topics
 
 echo "[Topics] Creating Kafka topics..."
 
-docker exec $KAFKA_CONTAINER kafka-topics.sh \
-  --bootstrap-server $BOOTSTRAP \
+docker compose exec "$KAFKA_CONTAINER" "$KAFKA_TOPICS_BIN" \
+  --bootstrap-server "$BOOTSTRAP" \
   --create --if-not-exists \
   --topic ride_requests \
   --partitions 12 \
   --replication-factor 1 \
   --config retention.ms=604800000
 
-docker exec $KAFKA_CONTAINER kafka-topics.sh \
-  --bootstrap-server $BOOTSTRAP \
+docker compose exec "$KAFKA_CONTAINER" "$KAFKA_TOPICS_BIN" \
+  --bootstrap-server "$BOOTSTRAP" \
   --create --if-not-exists \
   --topic driver_location \
   --partitions 24 \
   --replication-factor 1 \
   --config retention.ms=86400000
 
-docker exec $KAFKA_CONTAINER kafka-topics.sh \
-  --bootstrap-server $BOOTSTRAP \
+docker compose exec "$KAFKA_CONTAINER" "$KAFKA_TOPICS_BIN" \
+  --bootstrap-server "$BOOTSTRAP" \
   --create --if-not-exists \
   --topic ride_events \
   --partitions 12 \
@@ -34,6 +34,6 @@ docker exec $KAFKA_CONTAINER kafka-topics.sh \
   --config retention.ms=2592000000
 
 echo "[Topics] All topics created. Listing:"
-docker exec $KAFKA_CONTAINER kafka-topics.sh \
-  --bootstrap-server $BOOTSTRAP \
+docker compose exec "$KAFKA_CONTAINER" "$KAFKA_TOPICS_BIN" \
+  --bootstrap-server "$BOOTSTRAP" \
   --list
